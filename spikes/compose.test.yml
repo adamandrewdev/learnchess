@@ -1,0 +1,6 @@
+# Throwaway test copy of the stack: own database volume, no port on the host.
+#   docker compose -p lctest -f docker-compose.yml -f spikes/compose.test.yml up -d --wait
+#   docker compose -p lctest -f docker-compose.yml -f spikes/compose.test.yml down -v   (removes ONLY lctest's volumes)
+services:
+  web:
+    ports: !reset []

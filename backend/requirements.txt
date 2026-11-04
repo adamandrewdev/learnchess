@@ -1,0 +1,14 @@
+chess
+fastapi
+uvicorn[standard]
+langchain-anthropic
+langchain-openai
+pydantic
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Dev / checks
+pytest
+httpx
+ruff

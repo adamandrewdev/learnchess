@@ -1,0 +1,76 @@
+# learnchess: local only.  docker compose up --build  ->  http://localhost:5173
+#
+#   browser -> web (Vite dev server, React)  --/api proxy-->  api (FastAPI + Stockfish + Maia-3)
+#                                                             api -> db (Postgres)
+#
+# Only `web` publishes a port. api and db are reachable only inside this compose network.
+#
+# WHERE STATE LIVES: the `pgdata` named volume (games, moves, coach replies, spend log).
+# `docker compose down` keeps it; `docker compose down -v` DELETES it.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: learnchess
+      POSTGRES_PASSWORD: learnchess  # local-only database, never exposed outside compose
+      POSTGRES_DB: learnchess
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learnchess"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: learnchess-api:dev
+    env_file: .env  # ANTHROPIC_API_KEY, OPENAI_API_KEY
+    environment:
+      DATABASE_URL: postgresql+psycopg2://learnchess:learnchess@db:5432/learnchess
+      # Tuning knobs (PLAN D3, D21, D23, D24). Override per run: KNOB=value docker compose up -d
+      SPEND_CAP_USD: ${SPEND_CAP_USD:-5}
+      BOT_ELO: ${BOT_ELO:-400}
+      JUDGE_DEPTH: ${JUDGE_DEPTH:-16}
+      GOOD_MOVE_CHECK_RATE: ${GOOD_MOVE_CHECK_RATE:-0.125}
+      COACH_MIN_QUALITY: ${COACH_MIN_QUALITY:-mistake}
+      COACH_STILL_WINNING: ${COACH_STILL_WINNING:-0.85}
+      REVEAL_AFTER_RETRIES: ${REVEAL_AFTER_RETRIES:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+      - ./core:/app/core
+    # Apply migrations, then serve with auto-reload on code edits.
+    command: >
+      sh -c "alembic -c backend/alembic.ini upgrade head &&
+             uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir backend --reload-dir core"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules  # keeps node_modules inside Docker, off the Mac
+    environment:
+      API_URL: http://api:8000
+    command: sh -c "npm install --no-fund --no-audit && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  web_node_modules:

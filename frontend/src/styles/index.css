@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* learnchess palette (PLAN D13): neutral charcoal UI, classic brown board, blue accent.
+   Green is reserved for "good move" (user feedback: no green tint). */
+@theme {
+  --color-felt: #1c1d20;
+  --color-panel: #26272b;
+  --color-panel-2: #313237;
+  --color-line: #3d3f45;
+  --color-ink: #ececea;
+  --color-ink-dim: #a3a4a8;
+  --color-accent: #6b9bd8;
+  --color-good: #7fb77e;
+  --color-warn: #e0a458;
+  --color-bad: #e07a6a;
+  --color-sq-light: #efd9b5;
+  --color-sq-dark: #b58863;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-felt);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
