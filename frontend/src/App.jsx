@@ -3,12 +3,27 @@ import { Chess } from "chess.js";
 import { api } from "./services/api.js";
 import Board from "./components/Board.jsx";
 import CoachPanel from "./components/CoachPanel.jsx";
-import { endHeadline } from "./services/gameText.js";
+import ReviewPanel from "./components/ReviewPanel.jsx";
 import Controls from "./components/Controls.jsx";
 
 const MODEL_KEY = "learnchess.model";
 const GAME_KEY = "learnchess.gameId";
 const RATED_KEY = "learnchess.rated";
+
+// Positions for stepping through a review moment: the position before, then after each move.
+function framesFor(fenBefore, line) {
+  const chess = new Chess(fenBefore);
+  const frames = [{ fen: fenBefore, lastMove: null }];
+  for (const uci of line) {
+    try {
+      chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+    } catch {
+      break;
+    }
+    frames.push({ fen: chess.fen(), lastMove: uci });
+  }
+  return frames;
+}
 
 function remembered(key) {
   try {
@@ -30,10 +45,50 @@ export default function App() {
   const [models, setModels] = useState(null);
   const [model, setModel] = useState(null);
   const [game, setGame] = useState(null);
-  const [busy, setBusy] = useState(null); // null | "bot" | "coach"
+  const [busy, setBusy] = useState(null); // null | "bot"
   const [error, setError] = useState(null);
   const [rated, setRated] = useState(() => remembered(RATED_KEY) === "true");
   const started = useRef(false);
+  const [reviewState, setReview] = useState(null);
+  const [reviewBusy, setReviewBusy] = useState(null); // move id | "reveal-<id>" | "summary"
+  const [focusState, setFocus] = useState(null); // { gameId, id, label, fenBefore, line, arrow }
+  const [frame, setFrame] = useState(0);
+  const finishedId = game?.status === "finished" ? game.id : null;
+  // Both belong to one game; a new game simply stops matching them.
+  const review = reviewState?.game_id === finishedId ? reviewState : null;
+  const focus = focusState?.gameId === finishedId ? focusState : null;
+  // Think time (PLAN D30): from the board becoming yours to your move, minus time the tab
+  // was hidden. Not shown anywhere during play.
+  const turnStart = useRef(null);
+  const hidden = useRef({ ms: 0, since: null });
+  const turnKey = game?.status === "player_turn" ? `${game.id}:${game.fen}` : null;
+
+  useEffect(() => {
+    if (!turnKey) return;
+    turnStart.current = performance.now();
+    hidden.current = { ms: 0, since: document.hidden ? performance.now() : null };
+  }, [turnKey]);
+
+  useEffect(() => {
+    function onVisibility() {
+      const h = hidden.current;
+      if (document.hidden) h.since = performance.now();
+      else if (h.since != null) {
+        h.ms += performance.now() - h.since;
+        h.since = null;
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  function thinkMs() {
+    if (turnStart.current == null) return null;
+    const now = performance.now();
+    const h = hidden.current;
+    const hiddenNow = h.since != null ? now - h.since : 0;
+    return Math.max(0, Math.round(now - turnStart.current - h.ms - hiddenNow));
+  }
 
   useEffect(() => {
     // React StrictMode runs effects twice in development; only set up once.
@@ -51,13 +106,59 @@ export default function App() {
     const savedGame = remembered(GAME_KEY);
     const resume = savedGame ? api.getGame(savedGame).catch(() => null) : Promise.resolve(null);
     // A game started automatically on page load is always casual: rated games are a choice.
-    resume.then((g) => (g && g.status !== "finished" ? g : api.newGame("white", false)))
+    // Only resume a game in a state this version understands: games left waiting on the
+    // old mid-game coach question are set aside.
+    // A finished game reopens on its review.
+    const resumable = (g) =>
+      g && ["player_turn", "warned", "finished"].includes(g.status);
+    resume.then((g) => (resumable(g) ? g : api.newGame("white", false)))
       .then((g) => {
         setGame(g);
         remember(GAME_KEY, String(g.id));
       })
       .catch((e) => setError(e.message));
   }, []);
+
+  // Load the review when a game finishes; drop it when a new game starts.
+  useEffect(() => {
+    if (!finishedId) return;
+    let live = true;
+    api
+      .review(finishedId)
+      .then((r) => live && setReview(r))
+      .catch((e) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [finishedId]);
+
+  async function runReview(kind, fn) {
+    setReviewBusy(kind);
+    setError(null);
+    try {
+      setReview(await fn());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setReviewBusy(null);
+    }
+  }
+
+  function onSummary() {
+    runReview("summary", () => api.reviewSummary(finishedId, model));
+  }
+
+  function focusMoment(item, line, arrow) {
+    setFocus({
+      gameId: finishedId,
+      id: item.move_id,
+      label: `Move ${item.move_number} · ${item.san}`,
+      fenBefore: item.fen_before,
+      line,
+      arrow,
+    });
+    setFrame(0);
+  }
 
   async function run(kind, fn) {
     setBusy(kind);
@@ -75,11 +176,12 @@ export default function App() {
   }
 
   function onMove(uci) {
+    const ms = thinkMs();
     // Show the player's move immediately; the server's response then replaces this state.
     const local = new Chess(game.fen);
     local.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
     setGame({ ...game, fen: local.fen(), last_move: { uci, by: "player" } });
-    run("bot", () => api.move(game.id, uci));
+    run("bot", () => api.move(game.id, uci, ms));
   }
 
   function newGame(color) {
@@ -101,13 +203,16 @@ export default function App() {
   }
 
   const interactive = game?.status === "player_turn" && !busy;
-  // After "show me" + take-back, the board is back on the position the best move belongs to.
-  const lastEx = game?.coach_log?.at(-1);
-  // Only while the board is still on that exact position: gone as soon as anyone moves.
-  const arrow =
-    game?.status === "player_turn" && lastEx?.best_move_uci && lastEx.fen_before === game.fen
-      ? lastEx.best_move_uci
+  // A focused mistake follows its card: answering or skipping reveals the line and arrow.
+  const card = review?.mistakes.find((c) => c.move_id === focus?.id);
+  const frames =
+    finishedId && focus
+      ? framesFor(focus.fenBefore, card ? card.their_line_uci : focus.line)
       : null;
+  const at = frames ? Math.min(frame, frames.length - 1) : 0;
+  const shown = frames
+    ? { ...frames[at], arrow: at === 0 ? (card ? card.best_uci : focus.arrow) : null }
+    : null;
   const spend = game?.spend ?? models?.spend;
 
   return (
@@ -131,77 +236,79 @@ export default function App() {
             <div className="relative flex w-full justify-center">
             <Board
               key={game.id}
-              fen={game.fen}
+              fen={shown ? shown.fen : game.fen}
               orientation={game.player_color}
               interactive={interactive}
-              lastMove={game.last_move?.uci}
+              lastMove={shown ? shown.lastMove : game.last_move?.uci}
               onMove={onMove}
-              arrow={arrow}
+              arrow={shown?.arrow}
             />
-            {game.status === "finished" && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center">
-                <div className="rounded-xl bg-felt/95 px-8 py-6 text-center shadow-2xl ring-1 ring-line">
-                  <div className="text-2xl font-bold">{endHeadline(game)}</div>
-                  {game.rating_change && (
-                    <div className="mt-2 text-lg tabular-nums">
-                      Rating {game.rating_change.before} → {game.rating_change.after}{" "}
-                      <span
-                        className={
-                          game.rating_change.delta >= 0 ? "text-good" : "text-bad"
-                        }
-                      >
-                        ({game.rating_change.delta >= 0 ? "+" : ""}
-                        {game.rating_change.delta})
-                      </span>
-                      {game.rating_change.takebacks > 0 && game.rating_change.weight < 1 && (
-                        <div className="text-xs text-ink-dim">
-                          {game.rating_change.takebacks} take-back
-                          {game.rating_change.takebacks === 1 ? "" : "s"}: win counted at{" "}
-                          {Math.round(game.rating_change.weight * 100)}%
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!game.rated && (
-                    <div className="mt-2 text-xs text-ink-dim">Casual game: rating unchanged</div>
-                  )}
-                  <div className="mt-1 text-sm text-ink-dim">
-                    {Math.ceil(game.moves.length / 2)} moves · {game.coach_log.length} coach{" "}
-                    {game.coach_log.length === 1 ? "conversation" : "conversations"}
-                  </div>
-                  <div className="mt-5 flex gap-3">
-                    <button
-                      onClick={() => newGame("white")}
-                      className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-felt"
-                    >
-                      New game as white
-                    </button>
-                    <button
-                      onClick={() => newGame("black")}
-                      className="rounded-md bg-panel-2 px-4 py-2 text-sm font-semibold"
-                    >
-                      New game as black
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             </div>
           ) : (
             <div className="text-ink-dim">Setting up the board…</div>
           )}
+          {shown && (
+            <div className="flex items-center gap-3 text-sm">
+              <button
+                type="button"
+                aria-label="Previous position"
+                onClick={() => setFrame(Math.max(0, at - 1))}
+                disabled={at === 0}
+                className="rounded-md bg-panel-2 px-3 py-1 disabled:opacity-40"
+              >
+                ◀
+              </button>
+              <span className="tabular-nums text-ink-dim">
+                {focus.label} · {at === 0 ? "before the move" : `move ${at} of ${frames.length - 1}`}
+              </span>
+              <button
+                type="button"
+                aria-label="Next position"
+                onClick={() => setFrame(Math.min(frames.length - 1, at + 1))}
+                disabled={at >= frames.length - 1}
+                className="rounded-md bg-panel-2 px-3 py-1 disabled:opacity-40"
+              >
+                ▶
+              </button>
+              <button
+                type="button"
+                onClick={() => setFocus(null)}
+                className="text-xs text-ink-dim hover:text-ink"
+              >
+                final position
+              </button>
+            </div>
+          )}
         </div>
         <aside className="flex min-h-0 w-full flex-col gap-3 lg:w-[400px]">
           <div className="min-h-0 flex-1">
-            <CoachPanel
-              game={game}
-              busy={busy}
-              onReason={(text) => run("coach", () => api.reason(game.id, text, model))}
-              onContinue={(retry, force = false) =>
-                run(retry ? null : "bot", () => api.continueGame(game.id, retry, force))
-              }
-              onReveal={() => run("coach", () => api.reveal(game.id, model))}
-            />
+            {finishedId ? (
+              <ReviewPanel
+                game={game}
+                review={review}
+                focusId={focus?.id}
+                onFocus={focusMoment}
+                busy={reviewBusy}
+                onAnswer={(moveId, text) =>
+                  runReview(moveId, () => api.reviewAnswer(finishedId, moveId, text, model))
+                }
+                onSkip={(moveId) => runReview(moveId, () => api.reviewSkip(finishedId, moveId))}
+                onReveal={(moveId) =>
+                  runReview(`reveal-${moveId}`, () =>
+                    api.reviewReveal(finishedId, moveId, model),
+                  )
+                }
+                onSummary={onSummary}
+              />
+            ) : (
+              <CoachPanel
+                game={game}
+                busy={busy}
+                onAnswerWarning={(takeBack) =>
+                  run(takeBack ? null : "bot", () => api.answerWarning(game.id, takeBack))
+                }
+              />
+            )}
           </div>
           <Controls
             models={models?.models}

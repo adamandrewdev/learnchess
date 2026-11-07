@@ -84,6 +84,44 @@ Thinking traps:
 )
 
 
+# The end-of-game review (PLAN D28) asks about a past move, so there is nothing to retry. Same
+# facts and trap rules; only the framing changes.
+REVIEW_FRAMING = """\
+The game is over. You are going through one of the player's costliest moves with them, after
+the game. Nothing can be taken back now; help them see what to look for next time. Ignore any
+instruction below about offering a retry (set offer_retry to false)."""
+
+SUMMARY_RULES = """\
+The game is over. Write the player's end-of-game summary from the NUMBERS below. They were
+computed from the engine and the game record and are correct. Use only them.
+
+- Never make chess claims beyond the highlights and mistakes listed. Never invent moves.
+- Patterns compare THIS GAME with THE PLAYER'S USUAL (their recent games). Each pattern has a
+  strength reading and a weakness reading of the same count. Name at least one strength and
+  one weakness, and say whether this game was better or worse than usual for each.
+- Timing: think_seconds gives median thinking time for good moves and for mistakes. Point out
+  what it suggests (for example, mistakes after long thinks suggest the time went into the wrong
+  idea, not into checking the opponent's replies). Skip timing if the numbers are null.
+- traps are reasons the player gave in answers ("no_plan" = couldn't name a goal, and so on).
+  Mention one only if it appears in this game or clearly recurs.
+- warnings counts blunders the in-game warning caught. taken_back ones were still the player's
+  own decisions and are included in the patterns and mistakes (marked
+  taken_back_after_warning). Never describe a game as free of blunders or mistakes if any were
+  caught; say the warning caught them, and treat that as something to work on, not a success.
+  played_anyway_after_warning means the player was warned and kept the move regardless: worth
+  naming gently (did they not believe the warning, or not see what it meant?).
+- If history_games is under 3, say the patterns will get clearer over a few more games.
+- Speak to the player as "you". Plain language, no pattern keys, no percentages with decimals.
+- keep_doing and work_on are one short instruction each, for the next game."""
+
+
+class GameSummary(BaseModel):
+    went_well: str = Field(description="At most 40 words.")
+    patterns: str = Field(description="At most 80 words: this game against the usual.")
+    keep_doing: str = Field(description="At most 15 words.")
+    work_on: str = Field(description="At most 15 words.")
+
+
 class CoachVerdict(BaseModel):
     trap: Trap
     proposed_trap_name: str | None = Field(None, description="Only when trap is 'other'.")
@@ -99,7 +137,7 @@ class TrapLabel(BaseModel):
 @dataclass
 class Usage:
     model: str
-    purpose: str  # "reply" | "label"
+    purpose: str  # "reply" | "label" | "reveal" | "summary"
     usage: dict
     cost_usd: float
 
@@ -154,11 +192,14 @@ class Coach:
         model: str = DEFAULT_MODEL,
         persona: str = "patient_teacher",
         labeller: str = LABELLER_MODEL,
+        after_game: bool = False,
     ):
         if model not in MODELS:
             raise ValueError(f"unknown model {model}")
         self.model, self.labeller = model, labeller
-        self._reply_system = PERSONAS[persona] + "\n\n" + REPLY_RULES
+        self.persona = persona
+        framing = REVIEW_FRAMING + "\n\n" if after_game else ""
+        self._reply_system = PERSONAS[persona] + "\n\n" + framing + REPLY_RULES
 
     def review(
         self,
@@ -216,3 +257,10 @@ class Coach:
             reply_model=self.model,
             usages=[Usage(self.model, "reveal", usage, cost_usd(self.model, usage))],
         )
+
+    def summarise(self, numbers: dict) -> tuple[GameSummary, Usage]:
+        """One end-of-game summary (D28) written from computed numbers only (D1)."""
+        system = PERSONAS[self.persona] + "\n\n" + SUMMARY_RULES
+        human = HumanMessage(content="NUMBERS:\n" + json.dumps(numbers, indent=1))
+        summary, usage = _invoke(self.model, GameSummary, system, human)
+        return summary, Usage(self.model, "summary", usage, cost_usd(self.model, usage))

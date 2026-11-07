@@ -58,6 +58,16 @@ def piece_list(board: chess.Board) -> dict[str, list[str]]:
     return out
 
 
+@dataclass
+class MoveAnalysis:
+    """Facts for the coach plus the raw evaluations (pov = mover), which stay out of the coach's
+    prompt but drive the blunder warning (D27)."""
+
+    facts: MoveFacts
+    before: Evaluation
+    after: Evaluation
+
+
 def review_move(
     judge: Judge, board: chess.Board, move: chess.Move, before: Evaluation | None = None
 ) -> tuple[MoveFacts, Evaluation]:
@@ -67,6 +77,14 @@ def review_move(
     Returns the facts and the evaluation of the position after the move (pov = mover), which the
     caller can reuse as the next `before` for the opponent with `1 - win_prob`.
     """
+    analysis = analyse_move(judge, board, move, before)
+    return analysis.facts, analysis.after
+
+
+def analyse_move(
+    judge: Judge, board: chess.Board, move: chess.Move, before: Evaluation | None = None
+) -> MoveAnalysis:
+    """review_move, also returning the evaluation before the move."""
     mover = board.turn
     if before is None or before.pov != mover:
         before = judge.evaluate(board, mover)
@@ -81,7 +99,7 @@ def review_move(
     quality, _ = classify(before.win_prob, after.win_prob)
     missed = _rated_captures(judge, board, [c for c in available if c != san], before.win_prob)
     reply_line = after_board.variation_san(after.pv[:4]).split() if after.pv else []
-    return (
+    return MoveAnalysis(
         MoveFacts(
             fen_before=board.fen(),
             player_color="white" if mover == chess.WHITE else "black",
@@ -98,6 +116,7 @@ def review_move(
             their_best_line_san=_strip_numbers(reply_line),
             pieces=piece_list(board),
         ),
+        before,
         after,
     )
 

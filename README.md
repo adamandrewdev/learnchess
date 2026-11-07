@@ -1,7 +1,8 @@
 # learnchess
 
-Play a human-like bot at your level. When you make a mistake, the coach stops you and asks
-**why** you played it, works out the thinking trap behind it, and lets you take it back.
+Play a human-like bot at your level. The coach stays quiet during the game, except for a
+one-line warning when a move drops material or allows checkmate, which you can take back or
+keep. (The end-of-game review is being built next.)
 Local only; runs in Docker. Plan and decisions: [PLAN.md](PLAN.md).
 
 ## Before the first run
@@ -20,6 +21,8 @@ Local only; runs in Docker. Plan and decisions: [PLAN.md](PLAN.md).
 | See what's running | `docker compose ps` | Lists the containers and whether they're healthy. |
 | See the app's logs | `docker compose logs -f api` | Follows the backend's log; Ctrl+C stops following (the app keeps running). |
 | Change the spend cap | `SPEND_CAP_USD=2 docker compose up -d` | Restarts the backend with a new monthly cap (default $5). |
+| Make the blunder warning pickier | `WARN_MIN_CP_DROP=400 docker compose up -d` | Restarts the backend so it only warns on bigger losses (default 250 = about a knight; 100 = one pawn). |
+| Apply database changes after a code update | `docker compose restart api` | The backend updates the database's tables each time it starts. Your games are kept. If the app suddenly errors after new code arrives, this is the first thing to try. |
 
 **Three containers** (one isolated process each, defined in `docker-compose.yml`):
 

@@ -31,14 +31,13 @@ services:
     env_file: .env  # ANTHROPIC_API_KEY, OPENAI_API_KEY
     environment:
       DATABASE_URL: postgresql+psycopg2://learnchess:learnchess@db:5432/learnchess
-      # Tuning knobs (PLAN D3, D21, D23, D24). Override per run: KNOB=value docker compose up -d
+      # Tuning knobs (PLAN D24, D27). Override per run: KNOB=value docker compose up -d
       SPEND_CAP_USD: ${SPEND_CAP_USD:-5}
       BOT_ELO: ${BOT_ELO:-400}
       JUDGE_DEPTH: ${JUDGE_DEPTH:-16}
-      GOOD_MOVE_CHECK_RATE: ${GOOD_MOVE_CHECK_RATE:-0.125}
-      COACH_MIN_QUALITY: ${COACH_MIN_QUALITY:-mistake}
-      COACH_STILL_WINNING: ${COACH_STILL_WINNING:-0.85}
-      REVEAL_AFTER_RETRIES: ${REVEAL_AFTER_RETRIES:-2}
+      WARN_MATE_DEPTH: ${WARN_MATE_DEPTH:-3}
+      WARN_MIN_CP_DROP: ${WARN_MIN_CP_DROP:-250}
+      WARN_STILL_WINNING: ${WARN_STILL_WINNING:-0.85}
     depends_on:
       db:
         condition: service_healthy
