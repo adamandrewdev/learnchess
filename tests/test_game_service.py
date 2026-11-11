@@ -22,7 +22,7 @@ class FakeJudge:
         self.base = base
         self.base_cp = base_cp
 
-    def evaluate(self, board, pov):
+    def evaluate(self, board, pov, lines=1):
         wp, cp, mate = self.base, self.base_cp, None  # white's view
         if board.move_stack and board.peek().uci() in self.after:
             spec = self.after[board.peek().uci()]

@@ -2,14 +2,14 @@
 
 Single source of truth for what's being built and in what order. There is one backlog, and it is §7.
 
-## 1. Status — 6 November 2026
+## 1. Status — 11 November 2026
 
 | | |
 | --- | --- |
-| **Done** | P0, P1 (M1). Adaptive rating D26 (4 Nov 2026), pulled forward from P2. |
-| **In flight** | P2a done (M2 met: user confirmed warnings over games 48–50). P2b built (6 Nov 2026): end-of-game review. Preflight green (94 tests); view-only browser check on game 49 passed. Not yet exercised against the real API: answering, "why is X better?", the summary (unit-tested with a fake coach). |
-| **Next** | User finishes a real game and uses the review (M3, and measures per-game cost for §6). Then P2c: profile page. |
-| **Owed by user** | Commit P2a + P2b. Play a game through to its review and say how it reads. |
+| **Done** | P0, P1 (M1), P2a (M2), P2b (M3, measured 11 Nov 2026 from games 51–55: see §6). Adaptive rating D26. P2a + P2b committed (`4e5f5c2`). |
+| **In flight** | P2c built 11 Nov 2026: profile page, only-move pattern (X11), backup command (X4). Board/piece themes (`frontend/src/themes.js`) also uncommitted; D13 still holds (no green boards). |
+| **Next** | User looks at the profile and says what reads wrong. Then P2d: session focus (D32). |
+| **Owed by user** | Commit the theme work and P2c. Say how the review and the profile read. |
 
 Runs locally only (`docker compose up` → `http://localhost:<port>`). No deployment, no live URL.
 
@@ -81,7 +81,8 @@ The user: chess.com ~400, plays on the chess.com app, won't write code here, doe
 | P2a | **Built 6 Nov 2026.** Quiet play: mid-game coach stops and good-move checks removed; D27 warning (`core/infrastructure/analysis/warning.py`); D30 `think_ms` recorded from the first game. Migrations `a3c1e9d27f30` (`moves.think_ms`, `moves.warning`, `moves.warning_outcome`) and `b7d2f4a8c911` (`moves.eval_cp_after`). | Fixes the irritation immediately, and timing data starts accumulating before anything displays it. |
 | P2b | **Built 6 Nov 2026.** End-of-game review (D28): `backend/review_service.py`, `core/infrastructure/analysis/patterns.py` (D29 detectors, pulled forward from P2c because "what went well" needs them), `frontend/src/components/ReviewPanel.jsx`. Review exchanges reuse `coach_exchanges` (`reason_asked = "review"`); the summary is cached in `game_reviews` with the numbers it was written from (R3). Summary is written automatically once every question is answered or skipped, or on a button. | Restores the feedback, in the place the user asked for it. |
 | | *Detector calibration (6 Nov 2026):* of 83 bad moves in history, the engine's punishing reply took an already-threatened piece 9×, took an unthreatened piece 17×, a free capture was missed 20×, and 36 were quiet replies (deeper ideas or harsh opening grades, M6). Bad moves are blamed by that reply; the quiet ones stay unlabelled by the engine and are covered by the player's answers. | |
-| P2c | Profile page (D31) over the D29 rates, with phase/colour/eval breakdowns; "only move" strength (X11). | Needs a few games of P2a timing data to be worth looking at. |
+| P2c | **Built 11 Nov 2026.** `backend/profile_service.py` (`GET /api/profile`), `frontend/src/components/ProfilePage.jsx` ("Your playstyle" in the controls panel). Only-move (X11) added to D29. Past games open on their review; a reopened review never writes its summary automatically (browsing must not spend). No migration: the second engine line is a new key in `moves.facts`, backfilled for history by `backend/backfill_only_move.py`. | Needs a few games of P2a timing data to be worth looking at. |
+| | *Choices made in the build:* endgame = queens off, or **each side** ≤13 points of non-pawn material (D31 didn't say which). The headline names the strongest and weakest pattern by raw rate among those with ≥10 chances in the last 10 games; rates aren't strictly comparable across patterns (safety counts every move), so revisit if the headline is always the same pair. "Where games fall apart" = share of moves rated mistake/blunder; the opening share runs high partly because of M6. | |
 | P2d | Session focus (D32), scored in the review. | Needs P2c's rates to choose from. |
 
 ### P3 — Personas and tuning
@@ -97,7 +98,7 @@ Persona picker (D14); tune D27 thresholds from stored warnings.
 | --- | --- | --- |
 | M1 | **Playable coach** (met 4 Nov 2026) | From a fresh clone, `docker compose up` starts the app; full game completes; blunder → "why?"; trap named; takeback; spend meter correct; $0.01 cap blocks. |
 | M2 | **Quiet play** (P2a) | A full game with no coach interruptions. A deliberate piece hang triggers the one-line warning; take back and keep both work; an inaccuracy in a level position does **not** warn; hanging a pawn while ≥85% winning does **not** warn. Every player move in that game has a plausible `think_ms`; a move made after switching tabs for 30 s excludes those 30 s. Verified by opening the app, not only by tests. |
-| M3 | **It reviews me** (P2b) | Game end opens the review with all three parts. Exactly ≤3 mistakes listed, all kept moves. Answering one gets a reply and a trap label; skipping works. Spend log shows one summary call per game. Measured per-game cost recorded in §6. |
+| M3 | **It reviews me** (P2b) (met 11 Nov 2026) | Game end opens the review with all three parts. Exactly ≤3 mistakes listed, all kept moves. Answering one gets a reply and a trap label; skipping works. Spend log shows one summary call per game. Measured per-game cost recorded in §6. |
 | M4 | **It knows me** (P2c, P2d) | Profile shows strength and weakness rates with trends from ≥5 games, a timing split by move quality, the phase/colour/eval breakdowns, and the rating graph. A session focus is shown before a game and scored in its review. |
 | M5 | **Personas** (P3) | All three personas selectable; same review in each gives a clearly different tone. |
 
@@ -116,7 +117,7 @@ Sources: [Anthropic](https://platform.claude.com/docs/en/about-claude/pricing), 
 
 Prices are per million tokens; per-call figures are P0-3 means over 10 calls each. The $5 cap (D11) is one total across both providers.
 
-**Per game, after P2 (estimate, not measured):** one review summary (assume ~3× a coach call, since its input carries game and history numbers) + up to 3 reply+label pairs. On Sonnet: ~3×$0.0065 + 3×($0.0065+$0.0004) ≈ **$0.04 at most**, against ~$0.07 for the P1 flow (~10 messages). The D27 warning costs nothing. M3 replaces this estimate with a measurement.
+**Per game, after P2 (measured 11 Nov 2026, games 51–55):** the Sonnet summary averages **$0.015** (4 calls; Haiku: $0.0012). Each answered question costs ~$0.010 on Sonnet (reply) + $0.0004 (D19 label). Games 52–53 (2 answered each, Sonnet) cost **$0.035–0.039** all in, against the $0.04 estimate. At that rate $5 covers ~130 games a month. The D27 warning costs nothing.
 
 **Keys are shared with another project.** Each provider console's spend limit and billing then cover both projects together, so the in-app cap (D11) is the only per-app limit.
 
@@ -124,9 +125,9 @@ Prices are per million tokens; per-call figures are P0-3 means over 10 calls eac
 
 | ID | Item | Pinned to | Why there |
 | --- | --- | --- | --- |
-| X4 | Backup = `pg_dump` to a file; document the one command. | P2c | The profile makes history worth keeping. |
+| X4 | **Done 11 Nov 2026.** Backup/restore commands in the README; tested by restoring a dump into a throwaway Postgres (row counts matched). | P2c | The profile makes history worth keeping. |
 | X10 | **Done in P2a** (6 Nov 2026): the mid-game coach path is gone from the game service, routes and panel, with its settings. Kept for P2b: `core/infrastructure/coach/` (prompt, labeller, `explain_best`), the `coach_exchanges` table, and the old flow in git history (`e84e793`) for the reveal/retry logic. Games left waiting on an old question are not resumed; the page starts a new one. | — | The review is a different flow (questions about past moves, not a pending one), so it reuses the coach, not the state machine. |
-| X11 | Only-move detection (D29) needs `multipv=2` on the judge. Measure the added analysis time; if it pushes click-to-your-turn well past 1.7 s, run it after the game instead of per move. | P2c | First use of a second line. |
+| X11 | **Done 11 Nov 2026, per move.** Measured on 40 stored positions at depth 16: 0.85 s → 0.98 s per evaluation, added to one search per move (~+0.13 s on 1.7 s). Only move = the second-best move is ≥0.10 win-prob worse (the D6 mistake threshold); found = played move rated "good". Recaptures count. | P2c | First use of a second line. |
 | X8 | Coach prompt: never mention trap ids in the reply (GPT-4.1 and GPT-5.1 did, P0-3). | Done (P1) | Applies to the review prompt too. |
 | X5 | README "how to run it": start, stop, where data lives, what each command changes. Plain English (user's calibration: Docker is Taught). Update when P2 adds migrations. | P2a | New migration = new run step to explain. |
 | X6 | api image is **1.8 GB** (measured 4 Nov 2026: CPU PyTorch + Maia-3 5M checkpoint baked in). Kept on disk on purpose; it's rebuilt from cache. | — | |
@@ -137,7 +138,7 @@ Prices are per million tokens; per-call figures are P0-3 means over 10 calls eac
 | --- | --- | --- |
 | R1 | **D27 thresholds misfire**: warnings on non-obvious moves (annoying again) or silence on a hung queen. | Every warning and its outcome is stored; review after ~10 games and tune the three settings. M2 has explicit should-warn / shouldn't-warn checks. |
 | L3 | **Docker VM memory is full** with this stack, gameshop's Langfuse stack (~1.8 GB, ClickHouse 926 MB) and a test copy: Postgres in the test copy was OOM-killed on 6 Nov 2026. | Browser checks run against one stack at a time; stop gameshop's stack when testing here, or raise Docker Desktop's memory. |
-| R2 | **Think time is noisy**: stepping away without switching tabs, or thinking during the bot's move. Also: in the P2a headless check, a starved browser (three stacks in the 4 GB Docker VM) added 0.3–5 s of click lag to recorded times; the hidden-tab exclusion and the start point checked out (326 ms floor; 3 s hidden excluded). | Medians, 5-minute cap (D30). Timing patterns are only shown once a split has ≥20 moves. Sanity-check real games' `think_ms` before P2c relies on it. |
+| R2 | **Think time is noisy**: stepping away without switching tabs, or thinking during the bot's move. Also: in the P2a headless check, a starved browser (three stacks in the 4 GB Docker VM) added 0.3–5 s of click lag to recorded times; the hidden-tab exclusion and the start point checked out (326 ms floor; 3 s hidden excluded). | Medians, 5-minute cap (D30). Timing patterns are only shown once a split has ≥20 moves. Checked 11 Nov 2026 before P2c: 287 timed moves over 11 games, median 6.1 s, min 0.9 s, max 115 s, none capped. |
 | R3 | Review summary invents patterns not in the numbers. | D1: the prompt gets computed rates only and is told to cite them; structured output with the numbers it used, checked against the DB in tests. |
 | H1 | Maia-3 at 400 has the right statistics but may not *feel* like a 400 opponent. | Judged by the user over real games. Fallback remains a human-error layer. |
 | M5 | GPT-4.1 retirement (reported for 14 Jan 2027) and future model churn. | D10: the menu is built from each provider's live model list; prices live in one registry file. |

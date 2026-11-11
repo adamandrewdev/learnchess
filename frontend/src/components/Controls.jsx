@@ -1,5 +1,25 @@
 // Bottom-right panel: new game, resign, coach model (PLAN D10) and spend vs cap (D11).
 // Replaces the old top bar (user feedback: free the space, put the options here).
+import { BOARD_THEMES, PIECE_STYLES } from "../themes.js";
+
+function Picker({ label, value, onChange, choices }) {
+  return (
+    <label className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-ink-dim">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-md bg-felt px-2 py-1 ring-1 ring-line"
+      >
+        {Object.entries(choices).map(([id, c]) => (
+          <option key={id} value={id}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export default function Controls({
   models,
@@ -13,6 +33,11 @@ export default function Controls({
   rated,
   onRated,
   game,
+  boardTheme,
+  onBoardTheme,
+  pieceStyle,
+  onPieceStyle,
+  onProfile,
 }) {
   const pct = spend ? Math.min(100, (100 * spend.month_usd) / (spend.cap_usd || 1)) : 0;
   return (
@@ -21,11 +46,16 @@ export default function Controls({
         <span className="font-bold tracking-tight">
           learn<span className="text-accent">chess</span>
         </span>
-        {canResign && (
-          <button onClick={onResign} className="text-xs text-bad hover:underline">
-            Resign
+        <div className="flex items-center gap-3">
+          <button onClick={onProfile} className="text-xs text-accent hover:underline">
+            Your playstyle
           </button>
-        )}
+          {canResign && (
+            <button onClick={onResign} className="text-xs text-bad hover:underline">
+              Resign
+            </button>
+          )}
+        </div>
       </div>
 
       {rating && (
@@ -87,6 +117,9 @@ export default function Controls({
           ))}
         </select>
       </label>
+
+      <Picker label="Board" value={boardTheme} onChange={onBoardTheme} choices={BOARD_THEMES} />
+      <Picker label="Pieces" value={pieceStyle} onChange={onPieceStyle} choices={PIECE_STYLES} />
 
       {spend && (
         <div className="text-xs" title="LLM spend this calendar month (UTC)">

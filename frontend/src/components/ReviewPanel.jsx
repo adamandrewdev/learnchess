@@ -243,18 +243,21 @@ export default function ReviewPanel({
   onSkip,
   onReveal,
   onSummary,
+  autoSummary = true,
 }) {
   const asked = useRef(false);
   const n = review?.numbers;
   const allDone = review?.mistakes.every((c) => c.reply || c.skipped);
 
   // Write the summary once every question is answered or skipped (it can use the answers).
+  // Only for the game just played: a game reopened from the profile waits for the button, so
+  // browsing old games never spends.
   useEffect(() => {
-    if (review && allDone && !review.summary && !asked.current) {
+    if (autoSummary && review && allDone && !review.summary && !asked.current) {
       asked.current = true;
       onSummary();
     }
-  }, [review, allDone, onSummary]);
+  }, [autoSummary, review, allDone, onSummary]);
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-lg bg-panel">

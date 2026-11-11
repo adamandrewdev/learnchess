@@ -37,6 +37,10 @@ class MoveFacts:
     their_best_line_san: list[str] = field(default_factory=list)
     # D20: piece list, so the coach never has to parse a FEN to know where things are.
     pieces: dict[str, list[str]] = field(default_factory=dict)
+    # X11: win prob (for the player) after the engine's second-best move. A big gap to
+    # win_prob_before means only one move held the position. None for moves stored before
+    # 11 Nov 2026 that weren't backfilled, and when there was only one legal move.
+    second_best_win_prob: float | None = None
 
 
 def piece_list(board: chess.Board) -> dict[str, list[str]]:
@@ -87,7 +91,7 @@ def analyse_move(
     """review_move, also returning the evaluation before the move."""
     mover = board.turn
     if before is None or before.pov != mover:
-        before = judge.evaluate(board, mover)
+        before = judge.evaluate(board, mover, lines=2)
     best_line = board.variation_san(before.pv[:4]).split() if before.pv else []
     threats = threats_of_last_move(board)
     available = free_captures(board)
@@ -115,6 +119,9 @@ def analyse_move(
             their_best_reply_san=after_board.san(after.best_move) if after.best_move else None,
             their_best_line_san=_strip_numbers(reply_line),
             pieces=piece_list(board),
+            second_best_win_prob=None
+            if before.second_win_prob is None
+            else round(before.second_win_prob, 3),
         ),
         before,
         after,

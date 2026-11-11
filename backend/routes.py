@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.game_service import GameError, GameService
+from backend.profile_service import ProfileService
 from backend.review_service import ReviewService
 from core.infrastructure.coach.coach import DEFAULT_MODEL
 from core.infrastructure.postgresql.db import month_spend_usd
@@ -96,6 +97,12 @@ def models(request: Request, session: Session = Depends(get_session)):
         },
         "player_rating": request.app.state.service.rating(session),
     }
+
+
+@router.get("/profile")
+def profile(session: Session = Depends(get_session)):
+    """Playstyle profile (PLAN D31): computed numbers only, no LLM call."""
+    return ProfileService().profile(session)
 
 
 @router.post("/games")

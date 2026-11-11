@@ -2,7 +2,8 @@
 
 Play a human-like bot at your level. The coach stays quiet during the game, except for a
 one-line warning when a move drops material or allows checkmate, which you can take back or
-keep. (The end-of-game review is being built next.)
+keep. Each game ends with a review, and **Your playstyle** (in the bottom-right panel) shows
+your strengths, weaknesses, timing and where games fall apart, built up over every game.
 Local only; runs in Docker. Plan and decisions: [PLAN.md](PLAN.md).
 
 ## Before the first run
@@ -39,6 +40,29 @@ which survives `docker compose down`.
   coach reply and the spend history. There is no undo.
 - The app image (`learnchess-api:dev`, about 1.8 GB) stays on disk so restarts are quick.
   `docker image rm learnchess-api:dev` removes it; the next start rebuilds it.
+
+## Back up your games
+
+Run this in the repo folder. It writes your whole history to one file in a `backups/` folder
+(git-ignored), named by today's date. It only reads the database, so it's safe any time the app is running.
+
+```sh
+mkdir -p backups && docker compose exec -T db pg_dump --clean --if-exists -U learnchess learnchess > backups/learnchess-$(date +%F).sql
+```
+
+- `pg_dump` is Postgres's export tool; it runs inside the `db` container and its output lands in
+  the file on your Mac (that's what `>` does).
+- `--clean --if-exists` makes the file a full replacement: restoring it puts the database back
+  exactly as it was at backup time.
+
+**Restoring replaces everything currently in the database** with the backup's contents (games
+played since that backup are lost). With the app running:
+
+```sh
+docker compose exec -T db psql -q -U learnchess learnchess < backups/learnchess-2026-11-11.sql
+```
+
+(Use your file's name.) Then `docker compose restart api` so the backend reconnects cleanly.
 
 ## Checks (for development)
 

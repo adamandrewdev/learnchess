@@ -32,6 +32,9 @@ from core.infrastructure.analysis.facts import VALUE, free_captures, hanging_pie
 OK = ("good", "inaccuracy")  # the engine didn't object much
 BAD = ("mistake", "blunder")
 WINNING = 0.75  # win chance from which "keep it winning" applies
+# Only move (X11): the engine's second-best move would have been at least a mistake (D6), so one
+# move held the position. Recaptures count: at 400, getting the piece back is a real skill.
+ONLY_MOVE_GAP = 0.10
 DEVELOPMENT_MOVES = 10
 
 
@@ -47,6 +50,7 @@ PATTERNS = [
     Pattern("captures", "Took free material", "Missed free material"),
     Pattern("safety", "Kept your pieces protected", "Left a piece hanging"),
     Pattern("winning", "Kept a winning position winning", "Let a winning position slip"),
+    Pattern("only_move", "Found the only good move", "Missed the only good move"),
     Pattern("development", "Developed and castled early", "Slow to develop and castle"),
 ]
 BY_KEY = {p.key: p for p in PATTERNS}
@@ -151,6 +155,16 @@ def tag_move(m: PlayerMove) -> MoveTags:
                 best = Moment(m.id, m.san, number, "Kept your winning position under control", 5)
         elif bad:
             out.tags["winning"] = False
+
+    # Only move: one move held the position (needs the second engine line, stored since
+    # 11 Nov 2026). Found it if the engine rates the played move "good", which with a gap this
+    # size means the best move or one just as good.
+    second = facts.get("second_best_win_prob")
+    if second is not None and (m.win_prob_before or 0) - second >= ONLY_MOVE_GAP:
+        found = m.quality == "good"
+        out.tags["only_move"] = found
+        if found and (best is None or best.score < 20):
+            best = Moment(m.id, m.san, number, "Found the only move that held the position", 20)
 
     out.moment = best
     return out

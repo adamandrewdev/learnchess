@@ -13,8 +13,7 @@
   --color-good: #7fb77e;
   --color-warn: #e0a458;
   --color-bad: #e07a6a;
-  --color-sq-light: #efd9b5;
-  --color-sq-dark: #b58863;
+  /* Board square colours live in src/themes.js (user-selectable). */
 }
 
 html,

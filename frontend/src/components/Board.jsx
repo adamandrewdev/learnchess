@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+import { boardTheme, pieceSet } from "../themes.js";
 
 // Drag or click to move. chess.js gives instant legal-move feedback here; the backend
 // (python-chess) re-checks every move and is the authority (PLAN D16).
@@ -25,8 +26,18 @@ function isLegal(chess, from, to) {
   return chess.moves({ square: from, verbose: true }).some((m) => m.to === to);
 }
 
-export default function Board({ fen, orientation, interactive, lastMove, onMove, arrow }) {
+export default function Board({
+  fen,
+  orientation,
+  interactive,
+  lastMove,
+  onMove,
+  arrow,
+  theme,
+  pieceStyle,
+}) {
   const [selected, setSelected] = useState(null);
+  const colors = boardTheme(theme);
   const chess = new Chess(fen);
   const myColor = orientation === "white" ? "w" : "b";
 
@@ -72,8 +83,11 @@ export default function Board({ fen, orientation, interactive, lastMove, onMove,
             ? [{ startSquare: arrow.slice(0, 2), endSquare: arrow.slice(2, 4), color: "#6b9bd8" }]
             : [],
           allowDrawingArrows: false,
-          lightSquareStyle: { backgroundColor: "var(--color-sq-light)" },
-          darkSquareStyle: { backgroundColor: "var(--color-sq-dark)" },
+          pieces: pieceSet(pieceStyle),
+          lightSquareStyle: { backgroundColor: colors.light },
+          darkSquareStyle: { backgroundColor: colors.dark },
+          lightSquareNotationStyle: { color: colors.dark },
+          darkSquareNotationStyle: { color: colors.light },
           animationDurationInMs: 180,
         }}
       />

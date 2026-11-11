@@ -30,4 +30,6 @@ export const api = {
   reviewReveal: (id, moveId, model) =>
     request("POST", `/games/${id}/review/reveal`, { move_id: moveId, model }),
   reviewSummary: (id, model) => request("POST", `/games/${id}/review/summary`, { model }),
+  // Playstyle profile (PLAN D31): computed numbers, no LLM call.
+  profile: () => request("GET", "/profile"),
 };

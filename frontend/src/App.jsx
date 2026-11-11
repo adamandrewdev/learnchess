@@ -5,10 +5,14 @@ import Board from "./components/Board.jsx";
 import CoachPanel from "./components/CoachPanel.jsx";
 import ReviewPanel from "./components/ReviewPanel.jsx";
 import Controls from "./components/Controls.jsx";
+import ProfilePage from "./components/ProfilePage.jsx";
+import { DEFAULT_BOARD, DEFAULT_PIECES } from "./themes.js";
 
 const MODEL_KEY = "learnchess.model";
 const GAME_KEY = "learnchess.gameId";
 const RATED_KEY = "learnchess.rated";
+const BOARD_KEY = "learnchess.board";
+const PIECES_KEY = "learnchess.pieces";
 
 // Positions for stepping through a review moment: the position before, then after each move.
 function framesFor(fenBefore, line) {
@@ -48,11 +52,17 @@ export default function App() {
   const [busy, setBusy] = useState(null); // null | "bot"
   const [error, setError] = useState(null);
   const [rated, setRated] = useState(() => remembered(RATED_KEY) === "true");
+  const [boardThemeName, setBoardTheme] = useState(
+    () => remembered(BOARD_KEY) ?? DEFAULT_BOARD,
+  );
+  const [pieceStyle, setPieceStyle] = useState(() => remembered(PIECES_KEY) ?? DEFAULT_PIECES);
   const started = useRef(false);
   const [reviewState, setReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(null); // move id | "reveal-<id>" | "summary"
   const [focusState, setFocus] = useState(null); // { gameId, id, label, fenBefore, line, arrow }
   const [frame, setFrame] = useState(0);
+  const [view, setView] = useState("play"); // "play" | "profile" (PLAN D31)
+  const [reopenedId, setReopened] = useState(null); // a finished game opened from the profile
   const finishedId = game?.status === "finished" ? game.id : null;
   // Both belong to one game; a new game simply stops matching them.
   const review = reviewState?.game_id === finishedId ? reviewState : null;
@@ -184,7 +194,16 @@ export default function App() {
     run("bot", () => api.move(game.id, uci, ms));
   }
 
+  // From the profile's game list: show that game, which opens on its review (D28).
+  function openGame(id) {
+    setView("play");
+    setFocus(null);
+    setReopened(id);
+    run(null, () => api.getGame(id));
+  }
+
   function newGame(color) {
+    setView("play");
     run("bot", async () => {
       const g = await api.newGame(color, rated);
       remember(GAME_KEY, String(g.id));
@@ -195,6 +214,16 @@ export default function App() {
   function chooseRated(value) {
     setRated(value);
     remember(RATED_KEY, String(value));
+  }
+
+  function chooseBoardTheme(value) {
+    setBoardTheme(value);
+    remember(BOARD_KEY, value);
+  }
+
+  function choosePieceStyle(value) {
+    setPieceStyle(value);
+    remember(PIECES_KEY, value);
   }
 
   function chooseModel(id) {
@@ -214,6 +243,10 @@ export default function App() {
     ? { ...frames[at], arrow: at === 0 ? (card ? card.best_uci : focus.arrow) : null }
     : null;
   const spend = game?.spend ?? models?.spend;
+
+  if (view === "profile") {
+    return <ProfilePage onBack={() => setView("play")} onOpenGame={openGame} />;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -242,6 +275,8 @@ export default function App() {
               lastMove={shown ? shown.lastMove : game.last_move?.uci}
               onMove={onMove}
               arrow={shown?.arrow}
+              theme={boardThemeName}
+              pieceStyle={pieceStyle}
             />
             </div>
           ) : (
@@ -299,6 +334,7 @@ export default function App() {
                   )
                 }
                 onSummary={onSummary}
+                autoSummary={finishedId !== reopenedId}
               />
             ) : (
               <CoachPanel
@@ -322,6 +358,11 @@ export default function App() {
             rated={rated}
             onRated={chooseRated}
             game={game}
+            boardTheme={boardThemeName}
+            onBoardTheme={chooseBoardTheme}
+            pieceStyle={pieceStyle}
+            onPieceStyle={choosePieceStyle}
+            onProfile={() => setView("profile")}
           />
         </aside>
       </main>
